@@ -1,0 +1,134 @@
+### Base URL
+@baseUrl = http://localhost:3000/api
+@team1Id = YOUR_TEAM1_ID_HERE
+@team2Id = YOUR_TEAM2_ID_HERE
+@matchId = YOUR_MATCH_ID_HERE
+@playerId = YOUR_PLAYER_ID_HERE
+
+### 1. Login First
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "john@gmail.com",
+  "password": "Password123"
+}
+
+### 2. Create New Match (Setup with Toss)
+POST {{baseUrl}}/matches
+Content-Type: application/json
+
+{
+  "team1Id": "{{team1Id}}",
+  "team2Id": "{{team2Id}}",
+  "tossWinnerId": "{{team1Id}}",
+  "coinResult": "heads",
+  "tossChoice": "batting",
+  "battingFirstId": "{{team1Id}}",
+  "fieldingFirstId": "{{team2Id}}"
+}
+
+### 3. Get All Matches
+GET {{baseUrl}}/matches
+
+### 4. Get Single Match
+GET {{baseUrl}}/matches/{{matchId}}
+
+### 5. Select Player (1st Innings)
+POST {{baseUrl}}/matches/{{matchId}}/select-player
+Content-Type: application/json
+
+{
+  "playerId": "{{playerId}}",
+  "innings": 1
+}
+
+### 6. Score Runs - 4 runs
+POST {{baseUrl}}/matches/{{matchId}}/score-runs
+Content-Type: application/json
+
+{
+  "runs": 4,
+  "innings": 1
+}
+
+### 7. Score Runs - 6 runs
+POST {{baseUrl}}/matches/{{matchId}}/score-runs
+Content-Type: application/json
+
+{
+  "runs": 6,
+  "innings": 1
+}
+
+### 8. Score Runs - 1 run
+POST {{baseUrl}}/matches/{{matchId}}/score-runs
+Content-Type: application/json
+
+{
+  "runs": 1,
+  "innings": 1
+}
+
+### 9. Score Wide
+POST {{baseUrl}}/matches/{{matchId}}/score-extra
+Content-Type: application/json
+
+{
+  "extraType": "wide",
+  "runs": 1,
+  "innings": 1
+}
+
+### 10. Score No Ball
+POST {{baseUrl}}/matches/{{matchId}}/score-extra
+Content-Type: application/json
+
+{
+  "extraType": "noball",
+  "runs": 1,
+  "innings": 1
+}
+
+### 11. Score Bye (2 runs)
+POST {{baseUrl}}/matches/{{matchId}}/score-extra
+Content-Type: application/json
+
+{
+  "extraType": "bye",
+  "runs": 2,
+  "innings": 1
+}
+
+### 12. Player Out
+POST {{baseUrl}}/matches/{{matchId}}/player-out
+Content-Type: application/json
+
+{
+  "innings": 1
+}
+
+### 13. End 1st Innings
+POST {{baseUrl}}/matches/{{matchId}}/end-innings
+Content-Type: application/json
+
+{
+  "innings": 1
+}
+
+### 14. Select Player (2nd Innings)
+POST {{baseUrl}}/matches/{{matchId}}/select-player
+Content-Type: application/json
+
+{
+  "playerId": "ANOTHER_PLAYER_ID",
+  "innings": 2
+}
+
+### 15. End 2nd Innings (Complete Match)
+POST {{baseUrl}}/matches/{{matchId}}/end-innings
+Content-Type: application/json
+
+{
+  "innings": 2
+}

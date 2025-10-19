@@ -1,0 +1,554 @@
+const { Match, Team, Player } = require('../models');
+
+// @desc    Get all matches
+// @route   GET /api/matches
+const getAllMatches = async (req, res) => {
+  try {
+    const matches = await Match.find()
+      .populate('team1Id', 'name logo')
+      .populate('team2Id', 'name logo')
+      .populate('winnerId', 'name logo')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    const matchesFormatted = matches.map(match => ({
+      id: match._id,
+      team1: {
+        id: match.team1Id._id,
+        name: match.team1Id.name,
+        logo: match.team1Id.logo
+      },
+      team2: {
+        id: match.team2Id._id,
+        name: match.team2Id.name,
+        logo: match.team2Id.logo
+      },
+      status: match.status,
+      resultText: match.resultText,
+      winner: match.winnerId ? {
+        id: match.winnerId._id,
+        name: match.winnerId.name,
+        logo: match.winnerId.logo
+      } : null,
+      createdAt: match.createdAt,
+      completedAt: match.completedAt
+    }));
+
+    res.json({
+      success: true,
+      count: matchesFormatted.length,
+      matches: matchesFormatted
+    });
+  } catch (error) {
+    console.error('Get matches error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching matches'
+    });
+  }
+};
+
+// @desc    Get single match by ID
+// @route   GET /api/matches/:id
+const getMatchById = async (req, res) => {
+  try {
+    const match = await Match.findById(req.params.id)
+      .populate('team1Id')
+      .populate('team2Id')
+      .populate('tossWinnerId')
+      .populate('battingFirstId')
+      .populate('fieldingFirstId')
+      .populate('winnerId');
+
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      match: {
+        id: match._id,
+        team1: match.team1Id,
+        team2: match.team2Id,
+        tossWinner: match.tossWinnerId,
+        coinResult: match.coinResult,
+        tossChoice: match.tossChoice,
+        battingFirst: match.battingFirstId,
+        fieldingFirst: match.fieldingFirstId,
+        status: match.status,
+        resultText: match.resultText,
+        winner: match.winnerId,
+        scores: match.scores,
+        innings1Data: match.innings1Data,
+        innings2Data: match.innings2Data,
+        createdAt: match.createdAt,
+        completedAt: match.completedAt
+      }
+    });
+  } catch (error) {
+    console.error('Get match error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching match'
+    });
+  }
+};
+
+// @desc    Create new match (setup with toss)
+// @route   POST /api/matches
+const createMatch = async (req, res) => {
+  try {
+    const {
+      team1Id,
+      team2Id,
+      tossWinnerId,
+      coinResult,
+      tossChoice,
+      battingFirstId,
+      fieldingFirstId
+    } = req.body;
+
+    // Validation
+    if (!team1Id || !team2Id || !tossWinnerId || !coinResult || !tossChoice || !battingFirstId || !fieldingFirstId) {
+      return res.status(400).json({
+        success: false,
+        message: 'All match setup fields are required'
+      });
+    }
+
+    // Check if teams exist
+    const team1 = await Team.findById(team1Id);
+    const team2 = await Team.findById(team2Id);
+
+    if (!team1 || !team2) {
+      return res.status(404).json({
+        success: false,
+        message: 'One or both teams not found'
+      });
+    }
+
+    // Create match
+    const match = await Match.create({
+      team1Id,
+      team2Id,
+      tossWinnerId,
+      coinResult,
+      tossChoice,
+      battingFirstId,
+      fieldingFirstId,
+      status: 'setup',
+      scores: [
+        {
+          innings: 1,
+          battingTeamId: battingFirstId,
+          runs: 0,
+          wickets: 0,
+          balls: 0,
+          fours: 0,
+          sixes: 0,
+          completedPlayers: [],
+          currentPlayer: null
+        },
+        {
+          innings: 2,
+          battingTeamId: fieldingFirstId,
+          runs: 0,
+          wickets: 0,
+          balls: 0,
+          fours: 0,
+          sixes: 0,
+          completedPlayers: [],
+          currentPlayer: null
+        }
+      ]
+    });
+
+    // Store match ID in session
+    req.session.currentMatchId = match._id;
+
+    await match.populate(['team1Id', 'team2Id', 'battingFirstId']);
+
+    res.status(201).json({
+      success: true,
+      message: 'Match setup saved successfully',
+      matchId: match._id,
+      match: {
+        id: match._id,
+        team1: match.team1Id,
+        team2: match.team2Id,
+        battingFirst: match.battingFirstId,
+        status: match.status
+      }
+    });
+  } catch (error) {
+    console.error('Create match error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating match'
+    });
+  }
+};
+
+// @desc    Select current player
+// @route   POST /api/matches/:id/select-player
+const selectPlayer = async (req, res) => {
+  try {
+    const { playerId, innings } = req.body;
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    // Get player details
+    const player = await Player.findById(playerId);
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        message: 'Player not found'
+      });
+    }
+
+    const inningsIndex = innings - 1;
+    const currentInnings = match.scores[inningsIndex];
+
+    // Check if player already batted
+    const alreadyBatted = currentInnings.completedPlayers.some(
+      cp => cp.player.id === playerId
+    );
+
+    if (alreadyBatted) {
+      return res.status(400).json({
+        success: false,
+        message: 'This player has already batted in this innings'
+      });
+    }
+
+    // Set current player
+    currentInnings.currentPlayer = {
+      player: {
+        id: player._id,
+        playerName: player.playerName,
+        position: player.position,
+        photo: player.photo,
+        teamId: player.teamId
+      },
+      stats: {
+        runs: 0,
+        balls: 0,
+        fours: 0,
+        sixes: 0
+      }
+    };
+
+    await match.save();
+
+    res.json({
+      success: true,
+      player: currentInnings.currentPlayer.player
+    });
+  } catch (error) {
+    console.error('Select player error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error selecting player'
+    });
+  }
+};
+
+// @desc    Score runs
+// @route   POST /api/matches/:id/score-runs
+const scoreRuns = async (req, res) => {
+  try {
+    const { runs, innings } = req.body;
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    const inningsIndex = innings - 1;
+    const currentInnings = match.scores[inningsIndex];
+
+    if (!currentInnings.currentPlayer) {
+      return res.status(400).json({
+        success: false,
+        message: 'No player selected'
+      });
+    }
+
+    // Update player stats
+    currentInnings.currentPlayer.stats.runs += runs;
+    currentInnings.currentPlayer.stats.balls += 1;
+    if (runs === 4) currentInnings.currentPlayer.stats.fours += 1;
+    if (runs === 6) currentInnings.currentPlayer.stats.sixes += 1;
+
+    // Update team stats
+    currentInnings.runs += runs;
+    currentInnings.balls += 1;
+    if (runs === 4) currentInnings.fours += 1;
+    if (runs === 6) currentInnings.sixes += 1;
+
+    await match.save();
+
+    res.json({
+      success: true,
+      teamStats: {
+        runs: currentInnings.runs,
+        wickets: currentInnings.wickets,
+        balls: currentInnings.balls,
+        fours: currentInnings.fours,
+        sixes: currentInnings.sixes
+      },
+      playerStats: currentInnings.currentPlayer.stats
+    });
+  } catch (error) {
+    console.error('Score runs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error scoring runs'
+    });
+  }
+};
+
+// @desc    Score extras (wide, no ball, bye)
+// @route   POST /api/matches/:id/score-extra
+const scoreExtra = async (req, res) => {
+  try {
+    const { extraType, runs, innings } = req.body;
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    const inningsIndex = innings - 1;
+    const currentInnings = match.scores[inningsIndex];
+
+    // Add runs to team
+    currentInnings.runs += runs || 1;
+
+    // Only add ball for bye/leg-bye
+    if (extraType === 'bye' || extraType === 'legbye') {
+      currentInnings.balls += 1;
+    }
+
+    await match.save();
+
+    res.json({
+      success: true,
+      teamStats: {
+        runs: currentInnings.runs,
+        wickets: currentInnings.wickets,
+        balls: currentInnings.balls,
+        fours: currentInnings.fours,
+        sixes: currentInnings.sixes
+      }
+    });
+  } catch (error) {
+    console.error('Score extra error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error scoring extra'
+    });
+  }
+};
+
+// @desc    Player out
+// @route   POST /api/matches/:id/player-out
+const playerOut = async (req, res) => {
+  try {
+    const { innings } = req.body;
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    const inningsIndex = innings - 1;
+    const currentInnings = match.scores[inningsIndex];
+
+    if (!currentInnings.currentPlayer) {
+      return res.status(400).json({
+        success: false,
+        message: 'No player selected'
+      });
+    }
+
+    // Save completed player
+    currentInnings.completedPlayers.push(currentInnings.currentPlayer);
+
+    // Update team stats
+    currentInnings.wickets += 1;
+    currentInnings.balls += 1;
+
+    // Clear current player
+    currentInnings.currentPlayer = null;
+
+    await match.save();
+
+    // Check end conditions
+    let shouldEndInnings = false;
+    let endReason = null;
+
+    if (currentInnings.wickets >= 10) {
+      shouldEndInnings = true;
+      endReason = 'All out - 10 wickets fallen';
+    }
+
+    // Check target for 2nd innings
+    if (innings === 2) {
+      const targetRuns = match.scores[0].runs;
+      if (currentInnings.runs > targetRuns) {
+        shouldEndInnings = true;
+        endReason = 'Target achieved';
+      }
+    }
+
+    // Get remaining players
+    const battingTeamId = currentInnings.battingTeamId;
+    const totalPlayers = await Player.countDocuments({ teamId: battingTeamId });
+    const remainingPlayers = totalPlayers - currentInnings.completedPlayers.length;
+
+    if (remainingPlayers <= 0) {
+      shouldEndInnings = true;
+      endReason = 'No more players available';
+    }
+
+    res.json({
+      success: true,
+      teamStats: {
+        runs: currentInnings.runs,
+        wickets: currentInnings.wickets,
+        balls: currentInnings.balls,
+        fours: currentInnings.fours,
+        sixes: currentInnings.sixes
+      },
+      shouldEndInnings,
+      endReason,
+      remainingPlayers
+    });
+  } catch (error) {
+    console.error('Player out error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking player out'
+    });
+  }
+};
+
+// @desc    End innings
+// @route   POST /api/matches/:id/end-innings
+const endInnings = async (req, res) => {
+  try {
+    const { innings } = req.body;
+
+    const match = await Match.findById(req.params.id)
+      .populate('team1Id')
+      .populate('team2Id');
+
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    if (innings === 1) {
+      // End 1st innings, start 2nd
+      match.status = 'live';
+      match.scores[1].currentPlayer = null;
+      await match.save();
+
+      res.json({
+        success: true,
+        message: '1st Innings Complete! Starting 2nd Innings...',
+        newInnings: 2
+      });
+    } else {
+      // End 2nd innings, complete match
+      const result = calculateMatchResult(match);
+      
+      match.status = 'completed';
+      match.resultText = result.text;
+      match.winnerId = result.winner ? result.winner.id : null;
+      match.innings1Data = match.scores[0];
+      match.innings2Data = match.scores[1];
+      match.completedAt = new Date();
+
+      await match.save();
+
+      res.json({
+        success: true,
+        message: 'Match Complete!',
+        matchComplete: true,
+        result
+      });
+    }
+  } catch (error) {
+    console.error('End innings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error ending innings'
+    });
+  }
+};
+
+// Helper function to calculate match result
+function calculateMatchResult(match) {
+  const innings1 = match.scores[0];
+  const innings2 = match.scores[1];
+  const team1 = match.team1Id;
+  const team2 = match.team2Id;
+
+  const team1BattedFirst = match.battingFirstId.toString() === team1._id.toString();
+
+  const team1Runs = team1BattedFirst ? innings1.runs : innings2.runs;
+  const team2Runs = team1BattedFirst ? innings2.runs : innings1.runs;
+  const team2Wickets = team1BattedFirst ? innings2.wickets : innings1.wickets;
+
+  if (team1Runs > team2Runs) {
+    const margin = team1Runs - team2Runs;
+    return {
+      winner: { id: team1._id, name: team1.name, logo: team1.logo },
+      text: `${team1.name} wins by ${margin} runs`
+    };
+  } else if (team2Runs > team1Runs) {
+    const wicketsLeft = 10 - team2Wickets;
+    return {
+      winner: { id: team2._id, name: team2.name, logo: team2.logo },
+      text: `${team2.name} wins by ${wicketsLeft} wickets`
+    };
+  } else {
+    return {
+      winner: null,
+      text: 'Match Tied!'
+    };
+  }
+}
+
+module.exports = {
+  getAllMatches,
+  getMatchById,
+  createMatch,
+  selectPlayer,
+  scoreRuns,
+  scoreExtra,
+  playerOut,
+  endInnings
+};
