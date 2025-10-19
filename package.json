@@ -5,11 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "create-admin": "node scripts/createAdmin.js"
+    "dev": "nodemon server.js"
+    
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["Scoreboard", "player", "api", "nodejs", "mongodb"],
+  "author": "Avi Ranjan prasad",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
