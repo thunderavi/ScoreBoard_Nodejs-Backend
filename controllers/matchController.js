@@ -81,9 +81,8 @@ const getMatchById = async (req, res) => {
         status: match.status,
         resultText: match.resultText,
         winner: match.winnerId,
-        scores: match.scores,
-        innings1Data: match.innings1Data,
-        innings2Data: match.innings2Data,
+        innings1Score: match.scores[0],
+        innings2Score: match.scores[1],
         createdAt: match.createdAt,
         completedAt: match.completedAt
       }
@@ -110,6 +109,13 @@ const createMatch = async (req, res) => {
       battingFirstId,
       fieldingFirstId
     } = req.body;
+
+    console.log('📥 Create Match Request:');
+    console.log('  - team1Id:', team1Id);
+    console.log('  - team2Id:', team2Id);
+    console.log('  - tossWinnerId:', tossWinnerId);
+    console.log('  - battingFirstId:', battingFirstId);
+    console.log('  - fieldingFirstId:', fieldingFirstId);
 
     // Validation
     if (!team1Id || !team2Id || !tossWinnerId || !coinResult || !tossChoice || !battingFirstId || !fieldingFirstId) {
@@ -169,22 +175,26 @@ const createMatch = async (req, res) => {
     // Store match ID in session
     req.session.currentMatchId = match._id;
 
-    await match.populate(['team1Id', 'team2Id', 'battingFirstId']);
+    await match.populate(['team1Id', 'team2Id', 'battingFirstId', 'fieldingFirstId']);
+
+    console.log('✅ Match created successfully:', match._id);
 
     res.status(201).json({
       success: true,
       message: 'Match setup saved successfully',
       matchId: match._id,
       match: {
+        _id: match._id,
         id: match._id,
         team1: match.team1Id,
         team2: match.team2Id,
         battingFirst: match.battingFirstId,
+        fieldingFirst: match.fieldingFirstId,
         status: match.status
       }
     });
   } catch (error) {
-    console.error('Create match error:', error);
+    console.error('❌ Create match error:', error);
     res.status(500).json({
       success: false,
       message: 'Error creating match'
@@ -196,7 +206,11 @@ const createMatch = async (req, res) => {
 // @route   POST /api/matches/:id/select-player
 const selectPlayer = async (req, res) => {
   try {
-    const { playerId, innings } = req.body;
+    const { playerId } = req.body;
+
+    console.log('🎯 Select Player Request:');
+    console.log('  - Match ID:', req.params.id);
+    console.log('  - Player ID:', playerId);
 
     const match = await Match.findById(req.params.id);
     if (!match) {
@@ -205,6 +219,9 @@ const selectPlayer = async (req, res) => {
         message: 'Match not found'
       });
     }
+
+    console.log('  - Match status:', match.status);
+    console.log('  - Match scores length:', match.scores?.length);
 
     // Get player details
     const player = await Player.findById(playerId);
@@ -215,12 +232,31 @@ const selectPlayer = async (req, res) => {
       });
     }
 
-    const inningsIndex = innings - 1;
+    console.log('  - Player found:', player.playerName);
+
+    // Determine current innings based on match status
+    let currentInningsNumber = match.status === 'live' ? 2 : 1;
+    const inningsIndex = currentInningsNumber - 1;
+    
+    console.log('  - Current innings number:', currentInningsNumber);
+    console.log('  - Innings index:', inningsIndex);
+
     const currentInnings = match.scores[inningsIndex];
+
+    if (!currentInnings) {
+      console.error('❌ Current innings not found!');
+      return res.status(500).json({
+        success: false,
+        message: 'Innings data not found'
+      });
+    }
+
+    console.log('  - Current innings wickets:', currentInnings.wickets);
+    console.log('  - Completed players:', currentInnings.completedPlayers?.length);
 
     // Check if player already batted
     const alreadyBatted = currentInnings.completedPlayers.some(
-      cp => cp.player.id === playerId
+      cp => cp.player.id.toString() === playerId.toString()
     );
 
     if (alreadyBatted) {
@@ -249,15 +285,20 @@ const selectPlayer = async (req, res) => {
 
     await match.save();
 
+    console.log('✅ Player selected successfully:', currentInnings.currentPlayer.player.playerName);
+
     res.json({
       success: true,
-      player: currentInnings.currentPlayer.player
+      player: currentInnings.currentPlayer.player,
+      stats: currentInnings.currentPlayer.stats
     });
   } catch (error) {
-    console.error('Select player error:', error);
+    console.error('❌ Select player error:', error);
+    console.error('  - Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Error selecting player'
+      message: 'Error selecting player',
+      error: error.message
     });
   }
 };
@@ -266,7 +307,7 @@ const selectPlayer = async (req, res) => {
 // @route   POST /api/matches/:id/score-runs
 const scoreRuns = async (req, res) => {
   try {
-    const { runs, innings } = req.body;
+    const { runs } = req.body;
 
     const match = await Match.findById(req.params.id);
     if (!match) {
@@ -276,7 +317,9 @@ const scoreRuns = async (req, res) => {
       });
     }
 
-    const inningsIndex = innings - 1;
+    // Determine current innings
+    const currentInningsNumber = match.status === 'live' ? 2 : 1;
+    const inningsIndex = currentInningsNumber - 1;
     const currentInnings = match.scores[inningsIndex];
 
     if (!currentInnings.currentPlayer) {
@@ -324,7 +367,7 @@ const scoreRuns = async (req, res) => {
 // @route   POST /api/matches/:id/score-extra
 const scoreExtra = async (req, res) => {
   try {
-    const { extraType, runs, innings } = req.body;
+    const { type, runs } = req.body;
 
     const match = await Match.findById(req.params.id);
     if (!match) {
@@ -334,14 +377,16 @@ const scoreExtra = async (req, res) => {
       });
     }
 
-    const inningsIndex = innings - 1;
+    // Determine current innings
+    const currentInningsNumber = match.status === 'live' ? 2 : 1;
+    const inningsIndex = currentInningsNumber - 1;
     const currentInnings = match.scores[inningsIndex];
 
     // Add runs to team
     currentInnings.runs += runs || 1;
 
     // Only add ball for bye/leg-bye
-    if (extraType === 'bye' || extraType === 'legbye') {
+    if (type === 'bye' || type === 'legbye') {
       currentInnings.balls += 1;
     }
 
@@ -370,8 +415,6 @@ const scoreExtra = async (req, res) => {
 // @route   POST /api/matches/:id/player-out
 const playerOut = async (req, res) => {
   try {
-    const { innings } = req.body;
-
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({
@@ -380,7 +423,9 @@ const playerOut = async (req, res) => {
       });
     }
 
-    const inningsIndex = innings - 1;
+    // Determine current innings
+    const currentInningsNumber = match.status === 'live' ? 2 : 1;
+    const inningsIndex = currentInningsNumber - 1;
     const currentInnings = match.scores[inningsIndex];
 
     if (!currentInnings.currentPlayer) {
@@ -412,7 +457,7 @@ const playerOut = async (req, res) => {
     }
 
     // Check target for 2nd innings
-    if (innings === 2) {
+    if (currentInningsNumber === 2) {
       const targetRuns = match.scores[0].runs;
       if (currentInnings.runs > targetRuns) {
         shouldEndInnings = true;
@@ -456,11 +501,11 @@ const playerOut = async (req, res) => {
 // @route   POST /api/matches/:id/end-innings
 const endInnings = async (req, res) => {
   try {
-    const { innings } = req.body;
-
     const match = await Match.findById(req.params.id)
       .populate('team1Id')
-      .populate('team2Id');
+      .populate('team2Id')
+      .populate('battingFirstId')
+      .populate('fieldingFirstId');
 
     if (!match) {
       return res.status(404).json({
@@ -469,7 +514,10 @@ const endInnings = async (req, res) => {
       });
     }
 
-    if (innings === 1) {
+    // Determine current innings
+    const currentInningsNumber = match.status === 'live' ? 2 : 1;
+
+    if (currentInningsNumber === 1) {
       // End 1st innings, start 2nd
       match.status = 'live';
       match.scores[1].currentPlayer = null;
@@ -516,7 +564,7 @@ function calculateMatchResult(match) {
   const team1 = match.team1Id;
   const team2 = match.team2Id;
 
-  const team1BattedFirst = match.battingFirstId.toString() === team1._id.toString();
+  const team1BattedFirst = match.battingFirstId._id.toString() === team1._id.toString();
 
   const team1Runs = team1BattedFirst ? innings1.runs : innings2.runs;
   const team2Runs = team1BattedFirst ? innings2.runs : innings1.runs;
