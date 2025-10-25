@@ -78,14 +78,13 @@ const sessionConfig = {
     collectionName: 'sessions',
     ttl: 7 * 24 * 60 * 60 // 7 days
   }),
-  cookie: {
+ cookie: {
     secure: isProduction,
     httpOnly: true,
     sameSite: isProduction ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    // ADD THIS - Extract domain from allowed origins
-    domain: isProduction ? '.vercel.app' : undefined,
-    path: '/'  // ADD THIS
+    domain: undefined,  // ← Change from '.vercel.app' to undefined
+    path: '/'
   },
   name: 'cricket.sid',
   // Force session to be saved even if unmodified
