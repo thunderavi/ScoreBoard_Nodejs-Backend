@@ -77,6 +77,13 @@ const matchSchema = new mongoose.Schema({
     ref: 'Team',
     required: true
   },
+  // ⭐ CRITICAL: Add this field if it's missing
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,  // Make it required
+    index: true      // Add index for faster queries
+  },
   status: {
     type: String,
     enum: ['setup', 'live', 'completed'],
@@ -110,8 +117,17 @@ const matchSchema = new mongoose.Schema({
   }
 });
 
-// Index for faster queries
-matchSchema.index({ status: 1, createdAt: -1 });
-matchSchema.index({ team1Id: 1, team2Id: 1 });
+// Index for faster queries with user filter
+matchSchema.index({ status: 1, createdBy: 1, createdAt: -1 });
+matchSchema.index({ team1Id: 1, team2Id: 1, createdBy: 1 });
+matchSchema.index({ createdBy: 1, status: 1 });
+
+// Pre-save hook to ensure createdBy is set
+matchSchema.pre('save', function(next) {
+  if (!this.createdBy) {
+    return next(new Error('createdBy is required'));
+  }
+  next();
+});
 
 module.exports = mongoose.models.Match || mongoose.model('Match', matchSchema);

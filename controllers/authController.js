@@ -6,6 +6,8 @@ const signup = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    console.log('📝 Signup attempt:', email);
+
     // Validation
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -46,31 +48,55 @@ const signup = async (req, res) => {
       password
     });
 
-    // Create session
-    req.session.userId = user._id;
-    req.session.userName = user.name;
-    req.session.userEmail = user.email;
-    req.session.userLoggedIn = true;
+    console.log('✅ User created:', user._id);
 
-    // Save session and respond
-    req.session.save((err) => {
+    // CRITICAL: Regenerate session to prevent fixation attacks
+    req.session.regenerate((err) => {
       if (err) {
-        console.error('Session save error:', err);
+        console.error('❌ Session regenerate error:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating session'
+        });
       }
-      
-      res.status(201).json({
-        success: true,
-        message: 'Account created successfully',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email
+
+      // Set session data
+      req.session.userId = user._id;
+      req.session.userName = user.name;
+      req.session.userEmail = user.email;
+      req.session.userLoggedIn = true;
+
+      console.log('💾 Saving session:', {
+        userId: req.session.userId,
+        sessionID: req.sessionID
+      });
+
+      // CRITICAL: Save session before responding
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session save error:', err);
+          return res.status(500).json({
+            success: false,
+            message: 'Error saving session'
+          });
         }
+
+        console.log('✅ Session saved successfully');
+        
+        res.status(201).json({
+          success: true,
+          message: 'Account created successfully',
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email
+          }
+        });
       });
     });
 
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('❌ Signup error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error creating account'
@@ -83,6 +109,8 @@ const signup = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    console.log('🔑 Login attempt:', email);
 
     // Validation
     if (!email || !password) {
@@ -103,6 +131,7 @@ const login = async (req, res) => {
     // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
+      console.log('❌ User not found:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -112,37 +141,65 @@ const login = async (req, res) => {
     // Check password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      console.log('❌ Invalid password for:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
-    // Create session
-    req.session.userId = user._id;
-    req.session.userName = user.name;
-    req.session.userEmail = user.email;
-    req.session.userLoggedIn = true;
+    console.log('✅ Password valid for:', email);
 
-    // Save session and respond
-    req.session.save((err) => {
+    // CRITICAL: Regenerate session to prevent fixation attacks
+    req.session.regenerate((err) => {
       if (err) {
-        console.error('Session save error:', err);
+        console.error('❌ Session regenerate error:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating session'
+        });
       }
-      
-      res.json({
-        success: true,
-        message: 'Login successful',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email
+
+      // Set session data
+      req.session.userId = user._id;
+      req.session.userName = user.name;
+      req.session.userEmail = user.email;
+      req.session.userLoggedIn = true;
+
+      console.log('💾 Saving session:', {
+        userId: req.session.userId,
+        userName: req.session.userName,
+        sessionID: req.sessionID
+      });
+
+      // CRITICAL: Save session before responding
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session save error:', err);
+          return res.status(500).json({
+            success: false,
+            message: 'Error saving session'
+          });
         }
+
+        console.log('✅ Session saved successfully for:', email);
+        console.log('   Session ID:', req.sessionID);
+        console.log('   User ID:', req.session.userId);
+        
+        res.json({
+          success: true,
+          message: 'Login successful',
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email
+          }
+        });
       });
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error logging in'
@@ -154,23 +211,27 @@ const login = async (req, res) => {
 // @route   POST /api/auth/logout
 const logout = async (req, res) => {
   try {
+    console.log('👋 Logout request for user:', req.session?.userId);
+    
     req.session.destroy((err) => {
       if (err) {
-        console.error('Logout error:', err);
+        console.error('❌ Logout error:', err);
         return res.status(500).json({
           success: false,
           message: 'Error logging out'
         });
       }
 
-      res.clearCookie('connect.sid'); // Clear session cookie
+      res.clearCookie('cricket.sid'); // Clear session cookie (match the name in server.js)
+      console.log('✅ Logged out successfully');
+      
       res.json({
         success: true,
         message: 'Logged out successfully'
       });
     });
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error('❌ Logout error:', error);
     res.status(500).json({
       success: false,
       message: 'Error logging out'
@@ -182,6 +243,12 @@ const logout = async (req, res) => {
 // @route   GET /api/auth/me
 const getCurrentUser = async (req, res) => {
   try {
+    console.log('👤 Get current user - Session check:', {
+      hasSession: !!req.session,
+      userId: req.session?.userId,
+      sessionID: req.sessionID
+    });
+
     if (!req.session.userId) {
       return res.status(401).json({
         success: false,
@@ -193,12 +260,15 @@ const getCurrentUser = async (req, res) => {
     const user = await User.findById(req.session.userId).select('-password');
     
     if (!user) {
+      console.log('❌ User not found in database:', req.session.userId);
       return res.status(404).json({
         success: false,
         message: 'User not found',
         isLoggedIn: false
       });
     }
+
+    console.log('✅ Current user found:', user.email);
 
     res.json({
       success: true,
@@ -210,7 +280,7 @@ const getCurrentUser = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get current user error:', error);
+    console.error('❌ Get current user error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching user data'
@@ -221,9 +291,18 @@ const getCurrentUser = async (req, res) => {
 // @desc    Check authentication status
 // @route   GET /api/auth/check
 const checkAuth = (req, res) => {
+  const isLoggedIn = !!(req.session && req.session.userLoggedIn && req.session.userId);
+  
+  console.log('🔍 Auth check:', {
+    isLoggedIn,
+    hasSession: !!req.session,
+    userId: req.session?.userId,
+    sessionID: req.sessionID
+  });
+
   res.json({
-    isLoggedIn: req.session.userLoggedIn || false,
-    user: req.session.userId ? {
+    isLoggedIn,
+    user: isLoggedIn ? {
       id: req.session.userId,
       name: req.session.userName,
       email: req.session.userEmail

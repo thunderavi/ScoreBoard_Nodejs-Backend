@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth } = require('../middleware');
 const {
   getAllTeams,
   getTeamById,
@@ -9,17 +10,16 @@ const {
   exportTeams,
   clearAllTeams
 } = require('../controllers/teamController');
-const { requireAuth, optionalAuth } = require('../middleware');
 
-// Public routes (can view teams without login)
-router.get('/', optionalAuth, getAllTeams);
-router.get('/export/all', optionalAuth, exportTeams);
-router.get('/:id', optionalAuth, getTeamById);
+// Apply authentication to ALL team routes
+router.use(requireAuth);
 
-// Protected routes (require authentication)
-router.post('/', requireAuth, createTeam);
-router.put('/:id', requireAuth, updateTeam);
-router.delete('/:id', requireAuth, deleteTeam);
-router.delete('/clear/all', requireAuth, clearAllTeams);
+router.get('/', getAllTeams);
+router.get('/export/all', exportTeams);
+router.get('/:id', getTeamById);
+router.post('/', createTeam);
+router.put('/:id', updateTeam);
+router.delete('/clear/all', clearAllTeams);
+router.delete('/:id', deleteTeam);
 
 module.exports = router;

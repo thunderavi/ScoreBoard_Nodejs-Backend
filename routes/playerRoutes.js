@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth } = require('../middleware');
 const {
   getPlayersByTeam,
   getPlayerById,
@@ -9,17 +10,16 @@ const {
   exportPlayers,
   clearTeamPlayers
 } = require('../controllers/playerController');
-const { requireAuth, optionalAuth } = require('../middleware');
 
-// Public routes
-router.get('/team/:teamId', optionalAuth, getPlayersByTeam);
-router.get('/export/:teamId', optionalAuth, exportPlayers);
-router.get('/:id', optionalAuth, getPlayerById);
+// Apply authentication to ALL player routes
+router.use(requireAuth);
 
-// Protected routes (require authentication)
-router.post('/', requireAuth, createPlayer);
-router.put('/:id', requireAuth, updatePlayer);
-router.delete('/:id', requireAuth, deletePlayer);
-router.delete('/clear/:teamId', requireAuth, clearTeamPlayers);
+router.get('/team/:teamId', getPlayersByTeam);
+router.get('/export/:teamId', exportPlayers);
+router.get('/:id', getPlayerById);
+router.post('/', createPlayer);
+router.put('/:id', updatePlayer);
+router.delete('/clear/:teamId', clearTeamPlayers);
+router.delete('/:id', deletePlayer);
 
 module.exports = router;
