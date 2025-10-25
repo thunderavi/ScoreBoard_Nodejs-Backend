@@ -25,9 +25,7 @@ const teamSchema = new mongoose.Schema({
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'User reference is required'], // Make it required
-    index: true // Add index for faster queries
+    ref: 'User'
   },
   createdAt: {
     type: Date,
@@ -35,10 +33,7 @@ const teamSchema = new mongoose.Schema({
   }
 });
 
-// Compound index: Allow same team name for different users
-teamSchema.index({ name: 1, createdBy: 1 }, { unique: true });
-
-// Virtual for player count
+// Virtual for player count (will be populated when needed)
 teamSchema.virtual('playerCount', {
   ref: 'Player',
   localField: '_id',
