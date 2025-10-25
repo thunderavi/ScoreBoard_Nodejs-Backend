@@ -11,8 +11,20 @@ const app = express();
 connectDB();
 
 // CORS Configuration - MUST BE FIRST
+const allowedOrigins = [
+  'https://cricket-scoreboard-react.vercel.app',
+  'http://localhost:3000', // For local development
+  'http://localhost:5173'  // If using Vite
+];
+
 app.use(cors({
-  origin: 'https://score-board-nodejs-backend.vercel.app/',
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
