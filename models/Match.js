@@ -77,6 +77,12 @@ const matchSchema = new mongoose.Schema({
     ref: 'Team',
     required: true
   },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'User reference is required'],
+    index: true
+  },
   status: {
     type: String,
     enum: ['setup', 'live', 'completed'],
@@ -113,5 +119,6 @@ const matchSchema = new mongoose.Schema({
 // Index for faster queries
 matchSchema.index({ status: 1, createdAt: -1 });
 matchSchema.index({ team1Id: 1, team2Id: 1 });
+matchSchema.index({ createdBy: 1, status: 1 });
 
 module.exports = mongoose.models.Match || mongoose.model('Match', matchSchema);
