@@ -232,7 +232,7 @@ const createMatch = async (req, res) => {
           currentPlayer: null
         }
       ]
-    });
+    };
 
     // Store match ID in session
     req.session.currentMatchId = match._id;
