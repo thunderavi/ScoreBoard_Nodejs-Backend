@@ -1,10 +1,11 @@
 const { Match, Team, Player } = require('../models');
 
-// @desc    Get all matches
+// @desc    Get all matches for logged-in user
 // @route   GET /api/matches
 const getAllMatches = async (req, res) => {
   try {
-    const matches = await Match.find()
+    // Only get matches created by the logged-in user
+    const matches = await Match.find({ createdBy: req.session.userId })
       .populate('team1Id', 'name logo')
       .populate('team2Id', 'name logo')
       .populate('winnerId', 'name logo')
@@ -48,11 +49,15 @@ const getAllMatches = async (req, res) => {
   }
 };
 
-// @desc    Get single match by ID
+// @desc    Get single match by ID (with ownership check)
 // @route   GET /api/matches/:id
 const getMatchById = async (req, res) => {
   try {
-    const match = await Match.findById(req.params.id)
+    // Only get match if it belongs to the logged-in user
+    const match = await Match.findOne({
+      _id: req.params.id,
+      createdBy: req.session.userId
+    })
       .populate('team1Id')
       .populate('team2Id')
       .populate('tossWinnerId')
@@ -63,7 +68,7 @@ const getMatchById = async (req, res) => {
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: 'Match not found'
+        message: 'Match not found or you do not have permission to view it'
       });
     }
 
@@ -96,7 +101,7 @@ const getMatchById = async (req, res) => {
   }
 };
 
-// @desc    Create new match (setup with toss)
+// @desc    Create new match (setup with toss) - with ownership check
 // @route   POST /api/matches
 const createMatch = async (req, res) => {
   try {
@@ -110,12 +115,10 @@ const createMatch = async (req, res) => {
       fieldingFirstId
     } = req.body;
 
-    console.log('📥 Create Match Request:');
+    console.log('🔥 Create Match Request:');
     console.log('  - team1Id:', team1Id);
     console.log('  - team2Id:', team2Id);
-    console.log('  - tossWinnerId:', tossWinnerId);
-    console.log('  - battingFirstId:', battingFirstId);
-    console.log('  - fieldingFirstId:', fieldingFirstId);
+    console.log('  - User ID:', req.session.userId);
 
     // Validation
     if (!team1Id || !team2Id || !tossWinnerId || !coinResult || !tossChoice || !battingFirstId || !fieldingFirstId) {
@@ -125,18 +128,20 @@ const createMatch = async (req, res) => {
       });
     }
 
-    // Check if teams exist
-    const team1 = await Team.findById(team1Id);
-    const team2 = await Team.findById(team2Id);
+    // Check if BOTH teams exist AND belong to the logged-in user
+    const [team1, team2] = await Promise.all([
+      Team.findOne({ _id: team1Id, createdBy: req.session.userId }),
+      Team.findOne({ _id: team2Id, createdBy: req.session.userId })
+    ]);
 
     if (!team1 || !team2) {
       return res.status(404).json({
         success: false,
-        message: 'One or both teams not found'
+        message: 'One or both teams not found or you do not have permission to use them'
       });
     }
 
-    // Create match
+    // Create match with user ownership
     const match = await Match.create({
       team1Id,
       team2Id,
@@ -145,6 +150,7 @@ const createMatch = async (req, res) => {
       tossChoice,
       battingFirstId,
       fieldingFirstId,
+      createdBy: req.session.userId, // Add user ownership
       status: 'setup',
       scores: [
         {
@@ -202,7 +208,7 @@ const createMatch = async (req, res) => {
   }
 };
 
-// @desc    Select current player
+// @desc    Select current player (with ownership check)
 // @route   POST /api/matches/:id/select-player
 const selectPlayer = async (req, res) => {
   try {
@@ -212,23 +218,35 @@ const selectPlayer = async (req, res) => {
     console.log('  - Match ID:', req.params.id);
     console.log('  - Player ID:', playerId);
 
-    const match = await Match.findById(req.params.id);
+    // Find match and verify ownership
+    const match = await Match.findOne({
+      _id: req.params.id,
+      createdBy: req.session.userId
+    });
+
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: 'Match not found'
+        message: 'Match not found or you do not have permission to update it'
       });
     }
 
     console.log('  - Match status:', match.status);
-    console.log('  - Match scores length:', match.scores?.length);
 
-    // Get player details
-    const player = await Player.findById(playerId);
+    // Get player details and verify it belongs to user's team
+    const player = await Player.findById(playerId).populate('teamId', 'createdBy');
     if (!player) {
       return res.status(404).json({
         success: false,
         message: 'Player not found'
+      });
+    }
+
+    // Verify player's team belongs to the user
+    if (player.teamId.createdBy.toString() !== req.session.userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to use this player'
       });
     }
 
@@ -238,9 +256,6 @@ const selectPlayer = async (req, res) => {
     let currentInningsNumber = match.status === 'live' ? 2 : 1;
     const inningsIndex = currentInningsNumber - 1;
     
-    console.log('  - Current innings number:', currentInningsNumber);
-    console.log('  - Innings index:', inningsIndex);
-
     const currentInnings = match.scores[inningsIndex];
 
     if (!currentInnings) {
@@ -250,9 +265,6 @@ const selectPlayer = async (req, res) => {
         message: 'Innings data not found'
       });
     }
-
-    console.log('  - Current innings wickets:', currentInnings.wickets);
-    console.log('  - Completed players:', currentInnings.completedPlayers?.length);
 
     // Check if player already batted
     const alreadyBatted = currentInnings.completedPlayers.some(
@@ -273,7 +285,7 @@ const selectPlayer = async (req, res) => {
         playerName: player.playerName,
         position: player.position,
         photo: player.photo,
-        teamId: player.teamId
+        teamId: player.teamId._id
       },
       stats: {
         runs: 0,
@@ -294,7 +306,6 @@ const selectPlayer = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Select player error:', error);
-    console.error('  - Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Error selecting player',
@@ -303,17 +314,22 @@ const selectPlayer = async (req, res) => {
   }
 };
 
-// @desc    Score runs
+// @desc    Score runs (with ownership check)
 // @route   POST /api/matches/:id/score-runs
 const scoreRuns = async (req, res) => {
   try {
     const { runs } = req.body;
 
-    const match = await Match.findById(req.params.id);
+    // Find match and verify ownership
+    const match = await Match.findOne({
+      _id: req.params.id,
+      createdBy: req.session.userId
+    });
+
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: 'Match not found'
+        message: 'Match not found or you do not have permission to update it'
       });
     }
 
@@ -363,17 +379,22 @@ const scoreRuns = async (req, res) => {
   }
 };
 
-// @desc    Score extras (wide, no ball, bye)
+// @desc    Score extras (with ownership check)
 // @route   POST /api/matches/:id/score-extra
 const scoreExtra = async (req, res) => {
   try {
     const { type, runs } = req.body;
 
-    const match = await Match.findById(req.params.id);
+    // Find match and verify ownership
+    const match = await Match.findOne({
+      _id: req.params.id,
+      createdBy: req.session.userId
+    });
+
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: 'Match not found'
+        message: 'Match not found or you do not have permission to update it'
       });
     }
 
@@ -411,15 +432,20 @@ const scoreExtra = async (req, res) => {
   }
 };
 
-// @desc    Player out
+// @desc    Player out (with ownership check)
 // @route   POST /api/matches/:id/player-out
 const playerOut = async (req, res) => {
   try {
-    const match = await Match.findById(req.params.id);
+    // Find match and verify ownership
+    const match = await Match.findOne({
+      _id: req.params.id,
+      createdBy: req.session.userId
+    });
+
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: 'Match not found'
+        message: 'Match not found or you do not have permission to update it'
       });
     }
 
@@ -497,11 +523,15 @@ const playerOut = async (req, res) => {
   }
 };
 
-// @desc    End innings
+// @desc    End innings (with ownership check)
 // @route   POST /api/matches/:id/end-innings
 const endInnings = async (req, res) => {
   try {
-    const match = await Match.findById(req.params.id)
+    // Find match and verify ownership
+    const match = await Match.findOne({
+      _id: req.params.id,
+      createdBy: req.session.userId
+    })
       .populate('team1Id')
       .populate('team2Id')
       .populate('battingFirstId')
@@ -510,7 +540,7 @@ const endInnings = async (req, res) => {
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: 'Match not found'
+        message: 'Match not found or you do not have permission to update it'
       });
     }
 
