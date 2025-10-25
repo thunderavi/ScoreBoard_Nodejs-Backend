@@ -79,14 +79,13 @@ const sessionConfig = {
     ttl: 7 * 24 * 60 * 60 // 7 days
   }),
   cookie: {
-    // CRITICAL FIX: Only secure in production
     secure: isProduction,
     httpOnly: true,
-    // CRITICAL FIX: 'lax' for development, 'none' only for production with HTTPS
     sameSite: isProduction ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    // CRITICAL FIX: Don't set domain in development
-    domain: undefined
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    // ADD THIS - Extract domain from allowed origins
+    domain: isProduction ? '.vercel.app' : undefined,
+    path: '/'  // ADD THIS
   },
   name: 'cricket.sid',
   // Force session to be saved even if unmodified
