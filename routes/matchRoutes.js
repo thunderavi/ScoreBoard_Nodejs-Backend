@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware');
 const {
   getAllMatches,
   getMatchById,
@@ -11,17 +10,18 @@ const {
   playerOut,
   endInnings
 } = require('../controllers/matchController');
+const { requireAuth, optionalAuth } = require('../middleware');
 
-// Apply authentication to ALL match routes
-router.use(requireAuth);
+// Public routes
+router.get('/', optionalAuth, getAllMatches);
+router.get('/:id', optionalAuth, getMatchById);
 
-router.get('/', getAllMatches);
-router.get('/:id', getMatchById);
-router.post('/', createMatch);
-router.post('/:id/select-player', selectPlayer);
-router.post('/:id/score-runs', scoreRuns);
-router.post('/:id/score-extra', scoreExtra);
-router.post('/:id/player-out', playerOut);
-router.post('/:id/end-innings', endInnings);
+// Protected routes (require authentication)
+router.post('/', requireAuth, createMatch);
+router.post('/:id/select-player', requireAuth, selectPlayer);
+router.post('/:id/score-runs', requireAuth, scoreRuns);
+router.post('/:id/score-extra', requireAuth, scoreExtra);
+router.post('/:id/player-out', requireAuth, playerOut);
+router.post('/:id/end-innings', requireAuth, endInnings);
 
 module.exports = router;
