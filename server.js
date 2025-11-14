@@ -30,7 +30,8 @@ const allowedOrigins = [
   'https://cricket-scoreboard-react.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',
-  'http://localhost:5174'
+  'http://localhost:5174',
+   'http://backend:5000'
 ];
 
 app.use(cors({
@@ -78,14 +79,15 @@ const sessionConfig = {
     collectionName: 'sessions',
     ttl: 7 * 24 * 60 * 60 // 7 days
   }),
- cookie: {
-    secure: isProduction,
-    httpOnly: true,
-    sameSite: isProduction ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    domain: undefined,  // ← Change from '.vercel.app' to undefined
-    path: '/'
-  },
+cookie: {
+  secure: !isDevelopment, // Secure only in production
+  httpOnly: true,
+  sameSite: isDevelopment ? 'lax' : 'none', // Allow cookies for localhost dev
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  domain: undefined,
+  path: '/'
+},
+
   name: 'cricket.sid',
   // Force session to be saved even if unmodified
   rolling: true,
