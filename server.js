@@ -31,7 +31,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:5174',
-   'http://backend:5000'
+   'http://backend:5000',
+   
 ];
 
 app.use(cors({
