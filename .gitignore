@@ -15,3 +15,7 @@ Thumbs.db
 /dist
 /build
 /tmp
+
+# Ignore all JSON files except package.json
+*.json
+!package.json
