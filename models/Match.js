@@ -31,6 +31,52 @@ const matchScoreSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  
+  // ⭐ NEW FIELDS for complete scoreboard
+  overs: {
+    type: String,
+    default: "0.0"  // Format: "15.4"
+  },
+  runRate: {
+    type: Number,
+    default: 0
+  },
+  
+  // ⭐ NEW: Current over balls (last 6 deliveries)
+  currentOver: {
+    type: [mongoose.Schema.Types.Mixed], 
+    default: []  // e.g., [1, 4, 0, "W", 6, 2]
+  },
+  
+  // ⭐ NEW: Extras
+  extras: {
+    wides: { type: Number, default: 0 },
+    noBalls: { type: Number, default: 0 },
+    byes: { type: Number, default: 0 },
+    legByes: { type: Number, default: 0 },
+    total: { type: Number, default: 0 }
+  },
+  
+  // ⭐ NEW: For second innings
+  target: {
+    type: Number,
+    default: null
+  },
+  runsNeeded: {
+    type: Number,
+    default: null
+  },
+  ballsRemaining: {
+    type: Number,
+    default: null
+  },
+  
+  // ⭐ NEW: Current bowler name (simple string for now)
+  currentBowler: {
+    type: String,
+    default: null
+  },
+  
   completedPlayers: {
     type: [mongoose.Schema.Types.Mixed],
     default: []
@@ -77,18 +123,31 @@ const matchSchema = new mongoose.Schema({
     ref: 'Team',
     required: true
   },
-  // ⭐ CRITICAL: Add this field if it's missing
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,  // Make it required
-    index: true      // Add index for faster queries
+    required: true,
+    index: true
   },
   status: {
     type: String,
     enum: ['setup', 'live', 'completed'],
     default: 'setup'
   },
+  
+  // ⭐ NEW: Current innings number
+  currentInnings: {
+    type: Number,
+    default: 1,
+    enum: [1, 2]
+  },
+  
+  // ⭐ NEW: Total overs for match
+  totalOvers: {
+    type: Number,
+    default: 20  // T20 format
+  },
+  
   resultText: {
     type: String,
     default: null
@@ -117,17 +176,30 @@ const matchSchema = new mongoose.Schema({
   }
 });
 
-// Index for faster queries with user filter
+// Indexes
 matchSchema.index({ status: 1, createdBy: 1, createdAt: -1 });
 matchSchema.index({ team1Id: 1, team2Id: 1, createdBy: 1 });
 matchSchema.index({ createdBy: 1, status: 1 });
 
-// Pre-save hook to ensure createdBy is set
+// Pre-save hook
 matchSchema.pre('save', function(next) {
   if (!this.createdBy) {
     return next(new Error('createdBy is required'));
   }
   next();
 });
+
+// ⭐ NEW: Helper method to calculate overs from balls
+matchSchema.methods.calculateOvers = function(balls) {
+  const completedOvers = Math.floor(balls / 6);
+  const remainingBalls = balls % 6;
+  return `${completedOvers}.${remainingBalls}`;
+};
+
+// ⭐ NEW: Helper method to calculate run rate
+matchSchema.methods.calculateRunRate = function(runs, balls) {
+  if (balls === 0) return 0;
+  return parseFloat(((runs / balls) * 6).toFixed(2));
+};
 
 module.exports = mongoose.models.Match || mongoose.model('Match', matchSchema);

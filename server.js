@@ -5,6 +5,7 @@ const MongoStore = require('connect-mongo');
 const cors = require('cors');
 const connectDB = require('./config/database');
 const { logger, errorHandler, notFound } = require('./middleware');
+const { allowedOrigins } = require('./config/cors'); // ✅ Import from config
 
 const app = express();
 
@@ -25,16 +26,7 @@ console.log(`   Is Development: ${isDevelopment}`);
 console.log(`   Is Production: ${isProduction}`);
 console.log('=================================');
 
-// CORS Configuration
-const allowedOrigins = [
-  'https://cricket-scoreboard-react.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:5174',
-   'http://backend:5000',
-   
-];
-
+// ✅ CORS Configuration - Using centralized config
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, etc.)
@@ -65,7 +57,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ============================================
-// SESSION CONFIGURATION - FIXED
+// SESSION CONFIGURATION
 // ============================================
 const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'cricket-scoreboard-secret-key-change-in-production',
@@ -73,26 +65,23 @@ const sessionConfig = {
   saveUninitialized: false,
   store: MongoStore.create({
     mongoUrl: process.env.MONGODB_URI,
-    touchAfter: 24 * 3600, // Lazy session update (24 hours)
+    touchAfter: 24 * 3600,
     crypto: {
       secret: process.env.SESSION_SECRET || 'cricket-scoreboard-secret-key-change-in-production'
     },
     collectionName: 'sessions',
-    ttl: 7 * 24 * 60 * 60 // 7 days
+    ttl: 7 * 24 * 60 * 60
   }),
-cookie: {
-  secure: !isDevelopment, // Secure only in production
-  httpOnly: true,
-  sameSite: isDevelopment ? 'lax' : 'none', // Allow cookies for localhost dev
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-  domain: undefined,
-  path: '/'
-},
-
+  cookie: {
+    secure: !isDevelopment,
+    httpOnly: true,
+    sameSite: isDevelopment ? 'lax' : 'none',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    domain: undefined,
+    path: '/'
+  },
   name: 'cricket.sid',
-  // Force session to be saved even if unmodified
   rolling: true,
-  // Save session on every request
   proxy: true
 };
 
@@ -109,7 +98,7 @@ console.log(`   Store: MongoDB`);
 console.log('=================================');
 
 // ============================================
-// DEBUG MIDDLEWARE - Shows session state
+// DEBUG MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
   const sessionId = req.sessionID ? req.sessionID.substring(0, 8) + '...' : 'none';
@@ -117,7 +106,6 @@ app.use((req, res, next) => {
   
   console.log(`${req.method} ${req.path} - Session: ${sessionId}, User: ${userId}`);
   
-  // Log full session details for auth routes (debugging)
   if (req.path.includes('/auth/')) {
     console.log('   📋 Full Session:', {
       sessionID: req.sessionID,
@@ -145,6 +133,7 @@ const authRoutes = require('./routes/authRoutes');
 const teamRoutes = require('./routes/teamRoutes');
 const playerRoutes = require('./routes/playerRoutes');
 const matchRoutes = require('./routes/matchRoutes');
+const commentaryRoutes = require('./routes/commentaryRoutes');
 
 // ============================================
 // API ROUTES
@@ -153,6 +142,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/players', playerRoutes);
 app.use('/api/matches', matchRoutes);
+app.use('/api/commentary', commentaryRoutes);
 
 // ============================================
 // TEST ROUTES
@@ -174,7 +164,8 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       teams: '/api/teams',
       players: '/api/players',
-      matches: '/api/matches'
+      matches: '/api/matches',
+      commentary: '/api/commentary'
     },
     testing: {
       sessionTest: '/api/test-session',
@@ -199,15 +190,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Session test endpoint - TEST IF SESSIONS ARE WORKING
+// Session test endpoint
 app.get('/api/test-session', (req, res) => {
-  // Initialize or increment view count
   if (!req.session.views) {
     req.session.views = 0;
   }
   req.session.views++;
   
-  // Test data
   req.session.testData = {
     timestamp: new Date().toISOString(),
     message: 'Session is working!'
@@ -235,7 +224,7 @@ app.get('/api/test-session', (req, res) => {
   });
 });
 
-// Debug route - check current user
+// Debug route
 app.get('/api/debug/me', (req, res) => {
   res.json({
     session: {
@@ -287,7 +276,53 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  process.exit(0);
+});
+// ... existing code ...
+
+// ============================================
+// START SERVER
+// ============================================
+
+
+// ✅ Graceful shutdown handler
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} signal received: starting graceful shutdown`);
+  
+  // Stop accepting new connections
   server.close(() => {
-    console.log('HTTP server closed');
+    console.log('✅ HTTP server closed');
+    
+    // Stop connection cleanup
+    const { stopConnectionCleanup } = require('./controllers/commentaryController');
+    stopConnectionCleanup();
+    
+    // Close database connection
+    const mongoose = require('mongoose');
+    mongoose.connection.close(false, () => {
+      console.log('✅ MongoDB connection closed');
+      process.exit(0);
+    });
   });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('❌ Forcing shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+// Handle shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('UNHANDLED_REJECTION');
 });
