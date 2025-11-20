@@ -5,7 +5,7 @@ const MongoStore = require('connect-mongo');
 const cors = require('cors');
 const connectDB = require('./config/database');
 const { logger, errorHandler, notFound } = require('./middleware');
-const { allowedOrigins } = require('./config/cors'); // ✅ Import from config
+const { allowedOrigins } = require('./config/cors');
 
 const app = express();
 
@@ -34,7 +34,11 @@ app.use(cors({
       return callback(null, true);
     }
     
-    if (allowedOrigins.includes(origin)) {
+    // Remove trailing slashes from origin for comparison
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const normalizedAllowedOrigins = allowedOrigins.map(o => o.replace(/\/$/, ''));
+    
+    if (normalizedAllowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
       console.warn('⚠️  CORS Warning - Origin not in allowed list:', origin);
@@ -47,10 +51,15 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['set-cookie']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['set-cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+// Handle OPTIONS requests explicitly for CORS preflight
+app.options('*', cors());
 
 // Body parsing middleware
 app.use(express.json({ limit: '50mb' }));
@@ -73,9 +82,9 @@ const sessionConfig = {
     ttl: 7 * 24 * 60 * 60
   }),
   cookie: {
-    secure: !isDevelopment,
+    secure: isProduction,
     httpOnly: true,
-    sameSite: isDevelopment ? 'lax' : 'none',
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     domain: undefined,
     path: '/'
@@ -254,7 +263,8 @@ app.use(errorHandler);
 // START SERVER
 // ============================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+
+const server = app.listen(PORT, () => {
   console.log('');
   console.log('=================================');
   console.log('✅ SERVER STARTED SUCCESSFULLY');
@@ -264,6 +274,7 @@ app.listen(PORT, () => {
   console.log(`🔐 Session Store: MongoDB`);
   console.log(`🍪 Secure Cookies: ${isProduction}`);
   console.log(`🌐 CORS: Enabled for ${allowedOrigins.length} origins`);
+  console.log('   Allowed Origins:', allowedOrigins);
   console.log('=================================');
   console.log('📝 Test Endpoints:');
   console.log(`   Health: http://localhost:${PORT}/health`);
@@ -273,18 +284,6 @@ app.listen(PORT, () => {
   console.log('');
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  process.exit(0);
-});
-// ... existing code ...
-
-// ============================================
-// START SERVER
-// ============================================
-
-
 // ✅ Graceful shutdown handler
 const gracefulShutdown = (signal) => {
   console.log(`\n${signal} signal received: starting graceful shutdown`);
@@ -293,9 +292,15 @@ const gracefulShutdown = (signal) => {
   server.close(() => {
     console.log('✅ HTTP server closed');
     
-    // Stop connection cleanup
-    const { stopConnectionCleanup } = require('./controllers/commentaryController');
-    stopConnectionCleanup();
+    // Stop connection cleanup (if commentaryController has this function)
+    try {
+      const { stopConnectionCleanup } = require('./controllers/commentaryController');
+      if (stopConnectionCleanup) {
+        stopConnectionCleanup();
+      }
+    } catch (error) {
+      console.log('ℹ️  No connection cleanup to stop');
+    }
     
     // Close database connection
     const mongoose = require('mongoose');
@@ -326,3 +331,6 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
   gracefulShutdown('UNHANDLED_REJECTION');
 });
+
+// Export for Vercel serverless
+module.exports = app;

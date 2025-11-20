@@ -5,7 +5,7 @@
 .env.production
 
 # Google Cloud credentials
-*.json
+
 primal-context-*.json
 
 # Logs
