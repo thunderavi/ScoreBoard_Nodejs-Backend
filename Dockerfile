@@ -1,19 +1,20 @@
-# Use Node.js LTS version
+# Dockerfile for Backend (cricket_server)
+# Place this in: server/Dockerfile
+
 FROM node:18-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
+# Copy package files
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy all files
+# Copy all source code
 COPY . .
 
-# Expose backend port
+# Expose port
 EXPOSE 5000
 
 # Start the server

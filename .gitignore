@@ -1,21 +1,15 @@
-# Ignore node dependencies
-node_modules/
-
-# Ignore environment variables
+# Environment variables
 .env
+.env.local
+.env.development
+.env.production
 
-# Ignore log files
+# Google Cloud credentials
+*.json
+primal-context-*.json
+
+# Logs
 *.log
 
-# Ignore system files
-.DS_Store
-Thumbs.db
-
-# Ignore build or temp files
-/dist
-/build
-/tmp
-
-# Ignore all JSON files except package.json
-*.json
-!package.json
+# Node modules
+node_modules/
