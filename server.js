@@ -5,7 +5,7 @@ const MongoStore = require('connect-mongo');
 const cors = require('cors');
 const connectDB = require('./config/database');
 const { logger, errorHandler, notFound } = require('./middleware');
-const { allowedOrigins } = require('./config/cors'); // ✅ Import from config
+const { allowedOrigins } = require('./config/cors');
 
 const app = express();
 
@@ -244,46 +244,38 @@ app.get('/api/debug/me', (req, res) => {
   });
 });
 
-// 404 handler
+// ============================================
+// ERROR HANDLERS (MUST BE LAST)
+// ============================================
+
+// 404 handler - use this instead of '*' route
 app.use(notFound);
 
-// Error handler (must be last)
+// Error handler (must be absolute last)
 app.use(errorHandler);
 
 // ============================================
 // START SERVER
 // ============================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log('');
   console.log('=================================');
   console.log('✅ SERVER STARTED SUCCESSFULLY');
   console.log('=================================');
   console.log(`🚀 Server: http://localhost:${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔐 Session Store: MongoDB`);
+  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`💾 Session Store: MongoDB`);
   console.log(`🍪 Secure Cookies: ${isProduction}`);
   console.log(`🌐 CORS: Enabled for ${allowedOrigins.length} origins`);
   console.log('=================================');
-  console.log('📝 Test Endpoints:');
+  console.log('🔍 Test Endpoints:');
   console.log(`   Health: http://localhost:${PORT}/health`);
   console.log(`   Session Test: http://localhost:${PORT}/api/test-session`);
   console.log(`   Debug: http://localhost:${PORT}/api/debug/me`);
   console.log('=================================');
   console.log('');
 });
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  process.exit(0);
-});
-// ... existing code ...
-
-// ============================================
-// START SERVER
-// ============================================
-
 
 // ✅ Graceful shutdown handler
 const gracefulShutdown = (signal) => {
@@ -294,8 +286,12 @@ const gracefulShutdown = (signal) => {
     console.log('✅ HTTP server closed');
     
     // Stop connection cleanup
-    const { stopConnectionCleanup } = require('./controllers/commentaryController');
-    stopConnectionCleanup();
+    try {
+      const { stopConnectionCleanup } = require('./controllers/commentaryController');
+      stopConnectionCleanup();
+    } catch (err) {
+      console.log('⚠️  Commentary controller cleanup skipped');
+    }
     
     // Close database connection
     const mongoose = require('mongoose');
