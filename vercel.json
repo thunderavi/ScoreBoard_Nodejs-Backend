@@ -22,7 +22,7 @@
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://cricket-scoreboard-react.vercel.app"
+          "value": "https://cricket-scoreboard-react.vercel.app/"
         },
         {
           "key": "Access-Control-Allow-Methods",
@@ -43,7 +43,7 @@
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://cricket-scoreboard-react.vercel.app"
+          "value": "https://cricket-scoreboard-react.vercel.app/"
         },
         {
           "key": "Access-Control-Allow-Methods",
