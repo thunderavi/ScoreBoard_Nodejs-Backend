@@ -58,6 +58,31 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
+// ✅ ADD THIS: Manual CORS headers for Vercel
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Remove trailing slashes for comparison
+  const normalizedOrigin = origin ? origin.replace(/\/$/, '') : '';
+  const normalizedAllowedOrigins = allowedOrigins.map(o => o.replace(/\/$/, ''));
+  
+  if (!origin || normalizedAllowedOrigins.includes(normalizedOrigin) || isDevelopment) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  }
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  next();
+});
+
+
+
 // Handle OPTIONS requests explicitly for CORS preflight
 app.options('*', cors());
 
